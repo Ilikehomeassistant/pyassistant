@@ -7,18 +7,48 @@ import getpass
 import re
 import psutil
 import screen_brightness_control as sbc
+from vosk import Model, KaldiRecognizer
+import sounddevice as sd
+import queue
+import json
+import os
 
 narrator_muted = False
+audio_q = queue.Queue()
 
 def speak(text):
     global narrator_muted
-    print(f"Assistant: {text}")
+    print(f"Assist: {text}")
     if not narrator_muted:
         engine = pyttsx3.init()
         engine.setProperty('rate', 180)
         engine.say(text)
         engine.runAndWait()
         engine.stop()
+
+# Vosk model setup
+model_path = "model"
+if not os.path.exists(model_path):
+    speak("Vosk model not found. Please download and unzip it as 'model'.")
+    exit()
+
+model = Model(model_path)
+rec = KaldiRecognizer(model, 16000)
+
+def hotword_listener():
+    def callback(indata, frames, time, status):
+        audio_q.put(bytes(indata))
+
+    with sd.RawInputStream(samplerate=16000, blocksize=8000, dtype='int16',
+                           channels=1, callback=callback):
+        print("Waiting for hotword...")
+        while True:
+            data = audio_q.get()
+            if rec.AcceptWaveform(data):
+                result = json.loads(rec.Result())
+                if "text" in result and "hey assist" in result["text"]:
+                    speak("Yes?")
+                    break
 
 def listen():
     with sr.Microphone() as source:
@@ -104,7 +134,7 @@ def execute_command(command):
         speak(f"Today is {today}")
 
     elif command in ["what's your name", "what is your name"]:
-        speak("My name is Copilot. I'm your voice assistant.")
+        speak("My name is Assist. I'm your voice assistant.")
 
     elif command in ["hello", "hi"]:
         username = getpass.getuser()
@@ -123,10 +153,10 @@ def execute_command(command):
         speak("Narrator unmuted.")
 
     elif command == "how are you":
-        speak("I'm feeling electric!")
+        speak("I'm ready.")
 
     elif command == "thank you":
-        speak("You're welcome!")
+        speak("You're welcome.")
 
     elif command == "tell me a joke":
         speak("Why did the computer go to therapy? Because it had too many bytes of trauma.")
@@ -139,13 +169,17 @@ def execute_command(command):
         set_brightness(level)
 
     else:
-        speak("I didn't recognize that command. Try saying 'open', 'check battery', or 'stop'.")
+        speak("I didn't recognise that command. Try saying 'open', 'check battery', or 'stop'.")
 
 # Initialize recognizer
 recognizer = sr.Recognizer()
 
 # Main loop
 while True:
-    user_command = listen()
-    if user_command:
+    hotword_listener()
+    while True:
+        user_command = listen()
+        if user_command is None or user_command == "nevermind":
+            speak("Okay, I'm standing by.")
+            break
         execute_command(user_command)
