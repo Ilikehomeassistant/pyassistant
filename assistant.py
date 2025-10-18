@@ -5,7 +5,8 @@ import webbrowser
 import time
 import getpass
 import re
-import speedtest
+import psutil
+import screen_brightness_control as sbc
 
 narrator_muted = False
 
@@ -58,16 +59,26 @@ def control_media(action):
         pyautogui.press(key_map[action])
         speak(f"{action.capitalize()} command sent.")
 
-def check_internet_speed():
-    speak("Running internet speed test...")
-    st = speedtest.Speedtest()
-    st.get_best_server()
-    download = st.download() / 1_000_000  # Mbps
-    upload = st.upload() / 1_000_000      # Mbps
-    ping = st.results.ping
-    speak(f"Download speed is {download:.2f} megabits per second.")
-    speak(f"Upload speed is {upload:.2f} megabits per second.")
-    speak(f"Ping is {ping:.0f} milliseconds.")
+def check_battery():
+    battery = psutil.sensors_battery()
+    if battery:
+        percent = battery.percent
+        plugged = battery.power_plugged
+        status = "charging" if plugged else "not charging"
+        speak(f"Battery is at {percent}% and {status}.")
+    else:
+        speak("Battery information is not available.")
+
+def set_brightness(level):
+    try:
+        level = int(level)
+        if 0 <= level <= 100:
+            sbc.set_brightness(level)
+            speak(f"Brightness set to {level} percent.")
+        else:
+            speak("Please choose a brightness between 0 and 100.")
+    except:
+        speak("Couldn't adjust brightness. Make sure you're on a supported device.")
 
 def execute_command(command):
     global narrator_muted
@@ -120,11 +131,15 @@ def execute_command(command):
     elif command == "tell me a joke":
         speak("Why did the computer go to therapy? Because it had too many bytes of trauma.")
 
-    elif command == "check internet speed":
-        check_internet_speed()
+    elif command == "check battery":
+        check_battery()
+
+    elif command.startswith("set brightness to "):
+        level = command.replace("set brightness to ", "").strip()
+        set_brightness(level)
 
     else:
-        speak("I didn't recognize that command. Try saying 'open', 'check internet speed', or 'stop'.")
+        speak("I didn't recognize that command. Try saying 'open', 'check battery', or 'stop'.")
 
 # Initialize recognizer
 recognizer = sr.Recognizer()
